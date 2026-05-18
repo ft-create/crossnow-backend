@@ -45,32 +45,31 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const CAMERAS = [
   {
-    id:          'amb_us_plaza',
-    name:        'Ambassador Bridge — US Customs plaza',
+    id:          'amb_ca_plaza',
+    name:        'Ambassador Bridge — Canadian plaza (toward USA)',
     crossing:    'amb',
     lane:        'both',
-    // MDOT I-75 SB at Ambassador Bridge approach
-    // Primary: MDOT MiDrive snapshot (public, no auth)
-    url:         'https://mdotjboss.state.mi.us/MiDrive/camimage?id=1016',
-    fallbackUrl: 'https://mdotjboss.state.mi.us/MiDrive/camimage?id=1017',
+    // Verified live JPEG — from goodcaring.ca inspection
+    url:         'https://ambassador.solutionspal.com/cams/camimage.jpg',
+    fallbackUrl: 'https://ambassador.solutionspal.com/cams/camimage2.jpg',
   },
   {
-    id:          'amb_ca_plaza',
-    name:        'Ambassador Bridge — Canadian Customs plaza',
+    id:          'amb_us_plaza',
+    name:        'Ambassador Bridge — US plaza (toward Canada)',
     crossing:    'amb',
     lane:        'both',
-    // Windsor side — ambassadorbridge.com publishes a refreshing JPEG
-    url:         'https://www.ambassadorbridge.com/wp-content/uploads/cam1.jpg',
-    fallbackUrl: null,
+    // Verified live JPEG — from goodcaring.ca inspection
+    url:         'https://ambassador.solutionspal.com/cams/camimage2.jpg',
+    fallbackUrl: 'https://ambassador.solutionspal.com/cams/camimage.jpg',
   },
   {
     id:          'tun_us_exit',
-    name:        'Windsor Tunnel — US exit (Detroit)',
+    name:        'Windsor Tunnel — DWT Authority camera',
     crossing:    'tun',
     lane:        'both',
-    // DWT tunnel publishes a snapshot camera on their site
+    // DWT tunnel camera
     url:         'https://www.dwtunnel.com/camera/snapshot.jpg',
-    fallbackUrl: 'https://mdotjboss.state.mi.us/MiDrive/camimage?id=1024',
+    fallbackUrl: null,
   },
 ];
 
@@ -326,6 +325,44 @@ async function runVisionCycle() {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', lastUpdated: cache.lastUpdated });
+});
+
+// Image proxy — serves camera JPEGs to the browser without CORS issues
+// e.g. /api/camera-image?url=amb_ca_plaza
+app.get('/api/camera-image', async (req, res) => {
+  const CAM_URLS = {
+    amb_ca: 'https://ambassador.solutionspal.com/cams/camimage.jpg',
+    amb_us: 'https://ambassador.solutionspal.com/cams/camimage2.jpg',
+    tun:    'https://www.dwtunnel.com/camera/snapshot.jpg',
+  };
+
+  const key = req.query.cam;
+  const url = CAM_URLS[key];
+  if (!url) return res.status(400).json({ error: 'Unknown camera' });
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; CrossNow/1.0)',
+        'Referer': 'https://goodcaring.ca/',
+        'Accept': 'image/jpeg,image/*',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const buf = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'no-store');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('X-Camera-Key', key);
+    res.set('X-Timestamp', new Date().toISOString());
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    res.status(502).json({ error: 'Camera unavailable', message: err.message });
+  }
 });
 
 // CBP proxy — fetches bwt.cbp.gov server-side (no CORS issues)
