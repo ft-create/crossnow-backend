@@ -1,0 +1,18 @@
+{
+  "name": "crossnow-backend",
+  "version": "1.0.0",
+  "description": "Cross Now vision backend — camera analysis, wait time API, push alerts",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "vapid": "node generate-vapid.js"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "web-push": "^3.6.7"
+  }
+}
